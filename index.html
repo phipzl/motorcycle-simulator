@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motorcycle Performance Simulator</title>
+<style>
+:root{
+  --bg:#0f1115;
+  --panel:#171a21;
+  --card:#1d2129;
+  --text:#f1f3f5;
+  --muted:#a7adb7;
+  --border:#343a46;
+  --accent:#6ea8fe;
+  --accent-bg:#2d5ea8;
+  --s2:#65b5f6;
+  --s3:#ff9f6e;
+  --s4:#74d69b;
+  --s5:#c69cff;
+  --s6:#f4ce69;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+main{max-width:1400px;margin:0 auto;padding:20px}
+h1{font-size:1.7rem;margin:0 0 6px}
+.sub{color:var(--muted);margin:0 0 18px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+button,select,input,textarea{
+  background:#12151b;color:var(--text);border:1px solid var(--border);
+  border-radius:8px;padding:9px 10px;font:inherit
+}
+button{cursor:pointer}
+button.primary{background:var(--accent-bg);border-color:var(--accent-bg);font-weight:600}
+button:hover{filter:brightness(1.08)}
+label{font-size:.88rem;color:var(--muted)}
+label input,label select,label textarea{width:100%;margin-top:5px;color:var(--text)}
+textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.grid5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:15px}
+.bikecard{min-width:0}
+.cardhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.cardhead b{font-size:1rem}
+.cardhead .push{margin-left:auto}
+.fieldgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+details{border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--panel)}
+details summary{cursor:pointer;font-weight:600}
+details.inner{margin-top:12px;background:transparent}
+.muted{color:var(--muted)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.status{min-height:1.3em;color:var(--muted);font-size:.9rem;margin:8px 0}
+.race{margin-top:14px}
+.race-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}
+.lanes{display:grid;gap:7px}
+.lane{display:grid;grid-template-columns:130px 1fr;gap:8px;align-items:center}
+.track{height:38px;background:var(--panel);border-radius:8px;position:relative;overflow:hidden}
+.track:before,.track:after{content:"";position:absolute;top:0;bottom:0;border-left:1px dashed var(--border)}
+.track:before{left:33.33%}.track:after{left:66.66%}
+.bikeicon{position:absolute;left:0;top:50%;transform:translateY(-50%);font-size:1.4rem}
+.lanestat{position:absolute;right:8px;top:5px;color:var(--muted);font-size:.76rem}
+#scrub{width:100%;margin-top:10px}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:max-content;min-width:100%}
+th,td{padding:8px 11px;border-bottom:1px solid var(--border);white-space:nowrap}
+th{font-weight:600;text-align:right}
+td{text-align:right}
+th:first-child,td:first-child{
+  text-align:left;position:sticky;left:0;background:var(--card);z-index:1
+}
+.plot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.plotbox{min-width:0;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+.plotbox h3{font-size:.92rem;margin:0 0 6px}
+canvas{width:100%;height:auto;display:block}
+.foot{font-size:.8rem;color:var(--muted);margin-top:14px;line-height:1.45}
+.small{font-size:.82rem}
+@media(max-width:900px){
+  .grid5{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:720px){
+  main{padding:12px}
+  .grid2,.plot-grid{grid-template-columns:1fr}
+  .fieldgrid{grid-template-columns:1fr 1fr}
+  .lane{grid-template-columns:90px 1fr}
+}
+@media(max-width:480px){
+  .fieldgrid,.grid5{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>Motorcycle Performance Simulator</h1>
+  <p class="sub">Dyno + gearing + mass + aero based straight-line acceleration simulator.</p>
+
+  <div class="toolbar">
+    <button id="addBike" class="primary" type="button">Add bike</button>
+    <button id="calc" type="button">Recalculate</button>
+    <button id="race" type="button">Play race</button>
+    <button id="stopSound" type="button">Stop sound</button>
+    <label style="margin-left:auto;min-width:190px">Δ reference
+      <select id="reference"></select>
+    </label>
+  </div>
+
+  <div id="msg" class="status" aria-live="polite"></div>
+
+  <div id="bikeCards" class="grid2"></div>
+
+  <details style="margin-top:14px">
+    <summary>Environment</summary>
+    <div class="grid5" style="margin-top:12px">
+      <label>Air density kg/m³<input id="rho" type="number" step=".01" value="1.225"></label>
+      <label>Rolling Crr<input id="crr" type="number" step=".001" value=".015"></label>
+      <label>Launch RPM fraction<input id="launch" type="number" step=".05" value=".55"></label>
+      <label>Gradient %<input id="grade" type="number" step=".1" value="0"></label>
+      <label>Headwind km/h<input id="wind" type="number" value="0"></label>
+    </div>
+  </details>
+
+  <section class="card race">
+    <div class="race-head"><b>0–400 m race</b><span id="clock" class="mono">0.00 s</span></div>
+    <div id="lanes" class="lanes"></div>
+    <input id="scrub" type="range" min="0" max="2000" value="0" aria-label="Race time">
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <div style="font-weight:600;margin-bottom:10px">Performance comparison</div>
+    <div class="tablewrap"><table id="comparisonTable"></table></div>
+  </section>
+
+  <div class="plot-grid">
+    <section class="plotbox"><h3>x(t)</h3><canvas id="plotX" width="560" height="250"></canvas></section>
+    <section class="plotbox"><h3>v(t)</h3><canvas id="plotV" width="560" height="250"></canvas></section>
+    <section class="plotbox"><h3>a(t)</h3><canvas id="plotA" width="560" height="250"></canvas></section>
+    <section class="plotbox"><h3>RPM(t)</h3><canvas id="plotR" width="560" height="250"></canvas></section>
+    <section class="plotbox"><h3>v(x)</h3><canvas id="plotVX" width="560" height="250"></canvas></section>
+    <section class="plotbox"><h3>a(x)</h3><canvas id="plotAX" width="560" height="250"></canvas></section>
+    <section class="plotbox"><h3>a(v)</h3><canvas id="plotAV" width="560" height="250"></canvas></section>
+    <section class="plotbox"><h3>Δv(t)</h3><canvas id="plotDV" width="560" height="250"></canvas></section>
+    <section class="plotbox"><h3>Δx(t)</h3><canvas id="plotDX" width="560" height="250"></canvas></section>
+  </div>
+
+  <p class="foot">
+    Wheel-dyno curves and CdA values are approximate placeholders unless replaced with measured data.
+    Total mass includes rider. Audio is synthesized from firing events and filtered broadband exhaust pulses,
+    not recordings. This is an engineering estimate rather than a validated vehicle-dynamics package.
+  </p>
+</main>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id),G=9.80665,DT=.005,MAX=6;
+let bikes=[],sims=[],raf=null,racing=false,audioCtx=null,audioNodes=[];
+const COLORS=['#65b5f6','#ff9f6e','#74d69b','#c69cff','#f4ce69','#58d3c8'];
+
+const P={
+xj6:{n:'Yamaha XJ6',m:295,cda:.64,r:.315,red:11500,shift:10800,pr:1.955,fi:2.938,g:[2.846,2.125,1.632,1.300,1.091,.964],cap:.88,ms:180,fire:[0,180,360,540],dyn:[[2000,14],[3000,21],[4000,29],[5000,37],[6000,44],[7000,50],[8000,55],[9000,58],[10000,59],[11000,57],[11500,53]]},
+trident:{n:'Triumph Trident 660',m:270,cda:.60,r:.315,red:10500,shift:10100,pr:1.85,fi:2.90,g:[2.73,1.95,1.55,1.29,1.15,1.04],cap:.95,ms:120,fire:[0,240,480],dyn:[[2000,18],[3000,25],[4000,33],[5000,41],[6000,47],[7000,52],[8000,55],[9000,56],[10000,55],[10500,52]]},
+mt07:{n:'Yamaha MT-07',m:270,cda:.61,r:.315,red:10000,shift:9500,pr:1.925,fi:2.688,g:[2.846,2.125,1.632,1.300,1.091,.964],cap:.95,ms:140,fire:[0,270],dyn:[[2000,17],[3000,25],[4000,34],[5000,42],[6000,48],[7000,52],[8000,54],[9000,53],[10000,49]]},
+bear:{n:'Royal Enfield Bear 650',m:301,cda:.65,r:.321,red:7600,shift:7200,pr:2.051,fi:2.667,g:[2.615,1.813,1.429,1.190,1.040,.962],cap:.86,ms:180,fire:[0,270],dyn:[[2000,15],[3000,21],[4000,26],[5000,30],[6000,31.5],[7000,31.5],[7600,29]]},
+nx500:{n:'Honda NX500',m:284,cda:.67,r:.312,red:9000,shift:8600,pr:2.029,fi:2.733,g:[3.285,2.105,1.600,1.300,1.150,1.043],cap:.88,ms:160,fire:[0,360],dyn:[[2000,11],[3000,16],[4000,21],[5000,25],[6000,28],[7000,30],[8000,31.5],[8500,32],[9000,30]]},
+st900:{n:'Triumph Speed Twin 900',m:301,cda:.62,r:.321,red:8000,shift:7600,pr:1.26,fi:2.41,g:[3.50,2.50,1.85,1.48,1.30],cap:.92,ms:150,fire:[0,270],dyn:[[1500,18],[2000,24],[3000,33],[4000,39],[5000,42],[6000,43],[7000,43],[7500,43],[8000,40]]},
+s400:{n:'Triumph Speed 400',m:255,cda:.60,r:.306,red:10000,shift:9200,pr:2.839,fi:3.36,g:[2.83,1.93,1.42,1.14,.96,.84],cap:.90,ms:150,fire:[0],dyn:[[2000,7],[3000,10],[4000,14],[5000,18],[6000,22],[7000,25],[8000,26.5],[9000,26],[10000,23]]},
+xsr125:{n:'Yamaha XSR125',m:224,cda:.58,r:.314,red:11000,shift:10400,pr:3.041,fi:3.714,g:[2.833,1.875,1.363,1.142,.956,.840],cap:.72,ms:180,fire:[0],dyn:[[3000,2.5],[4000,3.5],[5000,4.7],[6000,6],[7000,7.2],[8000,8.3],[9000,9.1],[10000,9.6],[11000,9.0]]}
+};
+const LABEL={xj6:'XJ6',trident:'Trident 660',mt07:'MT-07',bear:'Bear 650',nx500:'NX500',st900:'Speed Twin 900',s400:'Speed 400',xsr125:'XSR125'};
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function newBike(k){return{id:'b'+Math.random().toString(36).slice(2,8),key:k,...structuredClone(P[k])}}
+function interp(c,r){if(r<=c[0][0])return c[0][1]*Math.max(0,r/c[0][0]);for(let i=1;i<c.length;i++)if(r<=c[i][0]){let a=c[i-1],b=c[i],f=(r-a[0])/(b[0]-a[0]);return a[1]+f*(b[1]-a[1])}let a=c.at(-1);return Math.max(0,a[1]*(1-(r-a[0])/(a[0]*.22)))}
+function parseNums(s){return s.split(/[\\s,;]+/).map(Number).filter(Number.isFinite)}
+function parseDyn(s){return s.trim().split(/\\n+/).map(x=>x.trim().split(/[\\s,;]+/).map(Number)).filter(x=>x.length>=2&&x.every(Number.isFinite)).sort((a,b)=>a[0]-b[0])}
+
+function card(b,i){
+ const opts=Object.entries(LABEL).map(([k,v])=>`<option value="${k}" ${k===b.key?'selected':''}>${v}</option>`).join('');
+ return `<section class="card bikecard" data-id="${b.id}">
+ <div class="cardhead"><b>Bike ${i+1}</b><select class="preset push">${opts}</select><button type="button" class="sound">Sound</button>${bikes.length>2?'<button type="button" class="remove">Remove</button>':''}</div>
+ <div class="fieldgrid">
+ <label>Name<input class="name" value="${esc(b.n)}"></label>
+ <label>Total mass kg<input class="mass" type="number" value="${b.m}"></label>
+ <label>CdA<input class="cda" type="number" step=".01" value="${b.cda}"></label>
+ <label>Shift RPM<input class="shift" type="number" value="${b.shift}"></label>
+ </div>
+ <details class="inner"><summary>Advanced</summary>
+ <div class="fieldgrid" style="margin-top:10px">
+ <label>Rear radius<input class="radius" type="number" step=".001" value="${b.r}"></label>
+ <label>Redline<input class="red" type="number" value="${b.red}"></label>
+ <label>Primary<input class="primary" type="number" step=".001" value="${b.pr}"></label>
+ <label>Final<input class="final" type="number" step=".001" value="${b.fi}"></label>
+ <label>Accel cap g<input class="cap" type="number" step=".05" value="${b.cap}"></label>
+ <label>Shift cut ms<input class="shiftms" type="number" value="${b.ms}"></label>
+ </div>
+ <label style="display:block;margin-top:10px">Gear ratios<input class="gears mono" value="${b.g.join(',')}"></label>
+ <label style="display:block;margin-top:10px">Wheel dyno RPM / kW<textarea class="dyno" rows="5">${b.dyn.map(x=>x.join(' ')).join('\\n')}</textarea></label>
+ </details></section>`
+}
+
+function renderCards(){
+ $('bikeCards').innerHTML=bikes.map(card).join('');
+ document.querySelectorAll('.bikecard').forEach(c=>{
+   const id=c.dataset.id;
+   c.querySelector('.preset').addEventListener('change',e=>{
+     let i=bikes.findIndex(x=>x.id===id),old=bikes[i].id;
+     bikes[i]={id:old,key:e.target.value,...structuredClone(P[e.target.value])};
+     renderCards();recalc();
+   });
+   c.querySelector('.remove')?.addEventListener('click',()=>{
+     bikes=bikes.filter(x=>x.id!==id);renderCards();recalc();
+   });
+   c.querySelector('.sound').addEventListener('click',()=>{
+     readCards();let i=bikes.findIndex(x=>x.id===id);playSound(bikes[i],sims[i]);
+   });
+ });
+ updateRef();
+}
+
+function readCards(){
+ document.querySelectorAll('.bikecard').forEach(c=>{
+   let b=bikes.find(x=>x.id===c.dataset.id);
+   b.n=c.querySelector('.name').value;
+   b.m=+c.querySelector('.mass').value;
+   b.cda=+c.querySelector('.cda').value;
+   b.shift=+c.querySelector('.shift').value;
+   b.r=+c.querySelector('.radius').value;
+   b.red=+c.querySelector('.red').value;
+   b.pr=+c.querySelector('.primary').value;
+   b.fi=+c.querySelector('.final').value;
+   b.cap=+c.querySelector('.cap').value;
+   b.ms=+c.querySelector('.shiftms').value;
+   b.g=parseNums(c.querySelector('.gears').value);
+   b.dyn=parseDyn(c.querySelector('.dyno').value);
+ });
+}
+function env(id,lo,hi){let v=+$(id).value;if(!Number.isFinite(v))throw Error('Invalid '+id);return Math.max(lo,Math.min(hi,v))}
+
+function simulate(c){
+ let rho=env('rho',.7,1.6),crr=env('crr',0,.05),launch=env('launch',.2,.9),grade=env('grade',-20,20)/100,wind=env('wind',-100,150)/3.6;
+ let t=0,x=0,v=.01,gear=0,cut=0,o=[];
+ while(t<50&&v<120){
+   let ratio=c.pr*c.fi*c.g[gear],road=v/c.r*ratio*60/(2*Math.PI);
+   if(road>=Math.min(c.shift,c.red)&&gear<c.g.length-1&&cut<=0){
+     gear++;cut=c.ms/1000;ratio=c.pr*c.fi*c.g[gear];road=v/c.r*ratio*60/(2*Math.PI);
+   }
+   let rpm=Math.max(c.red*launch,road),drive=0;
+   if(cut>0)cut=Math.max(0,cut-DT);
+   else{
+     let kw=interp(c.dyn,rpm),om=Math.max(1,rpm*2*Math.PI/60);
+     drive=kw*1000/om*ratio/c.r;
+   }
+   let va=Math.max(0,v+wind),drag=.5*rho*c.cda*va*va,roll=crr*c.m*G,grav=c.m*G*Math.sin(Math.atan(grade));
+   let a=(drive-drag-roll-grav)/c.m;
+   a=Math.max(-2*G,Math.min(c.cap*G,a));
+   v=Math.max(0,v+a*DT);x+=v*DT;t+=DT;
+   o.push({t,x,v,a,rpm,gear:gear+1});
+   if(t>12&&Math.abs(a)<.006&&gear===c.g.length-1)break;
+ }
+ return o;
+}
+
+function cross(s,key,target){for(let i=1;i<s.length;i++)if(s[i][key]>=target&&s[i-1][key]<target){let a=s[i-1],b=s[i],f=(target-a[key])/(b[key]-a[key]);return a.t+f*(b.t-a.t)}return null}
+function atT(s,t){return s[Math.max(0,Math.min(s.length-1,Math.round(t/DT)-1))]}
+function atX(s,x){for(let i=1;i<s.length;i++)if(s[i].x>=x){let a=s[i-1],b=s[i],f=(x-a.x)/(b.x-a.x);return{v:a.v+f*(b.v-a.v),a:a.a+f*(b.a-a.a),t:a.t+f*(b.t-a.t)}}return null}
+const tFmt=v=>v==null?'—':v.toFixed(2)+' s',vFmt=v=>v==null?'—':(v*3.6).toFixed(1)+' km/h';
+
+function makeTable(){
+ const rows=[
+ ['0–70 km/h',s=>tFmt(cross(s,'v',70/3.6))],
+ ['0–100 km/h',s=>tFmt(cross(s,'v',100/3.6))],
+ ['0–130 km/h',s=>tFmt(cross(s,'v',130/3.6))],
+ ['0–160 km/h',s=>tFmt(cross(s,'v',160/3.6))],
+ ['0–200 km/h',s=>tFmt(cross(s,'v',200/3.6))],
+ ['Speed @ 5 s',s=>vFmt(atT(s,5)?.v)],
+ ['Speed @ 10 s',s=>vFmt(atT(s,10)?.v)],
+ ['Speed @ 15 s',s=>vFmt(atT(s,15)?.v)],
+ ['Speed @ 50 m',s=>vFmt(atX(s,50)?.v)],
+ ['Speed @ 100 m',s=>vFmt(atX(s,100)?.v)],
+ ['Speed @ 200 m',s=>vFmt(atX(s,200)?.v)],
+ ['Speed @ 400 m',s=>vFmt(atX(s,400)?.v)],
+ ['400 m time',s=>tFmt(atX(s,400)?.t)],
+ ['Top speed',s=>(Math.max(...s.map(d=>d.v))*3.6).toFixed(1)+' km/h']
+ ];
+ let h='<thead><tr><th>Metric</th>'+bikes.map(b=>`<th>${esc(b.n)}</th>`).join('')+'</tr></thead><tbody>';
+ for(const [name,f] of rows)h+=`<tr><td>${name}</td>${sims.map(s=>`<td class="mono">${f(s)}</td>`).join('')}</tr>`;
+ $('comparisonTable').innerHTML=h+'</tbody>';
+}
+
+function draw(id,xFn,yFn,xLab,yLab,opt={}){
+ const cv=$(id),q=cv.getContext('2d'),W=cv.width,H=cv.height,L=52,R=12,T=12,B=34,ref=+$('reference').value||0;
+ let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity,sets=[];
+ sims.forEach((s,si)=>{
+   let pts=[];
+   for(let j=0;j<s.length;j+=8){
+     let d=s[j],x=xFn(d),y=yFn(d);
+     if(opt.diff){let rr=atT(sims[ref],d.t);if(!rr)continue;y-=yFn(rr)}
+     if(!Number.isFinite(x)||!Number.isFinite(y))continue;
+     pts.push([x,y]);xmin=Math.min(xmin,x);xmax=Math.max(xmax,x);ymin=Math.min(ymin,y);ymax=Math.max(ymax,y);
+   }
+   sets.push(pts);
+ });
+ if(opt.zero){ymin=Math.min(0,ymin);ymax=Math.max(0,ymax)}
+ if(xmax<=xmin){xmax=xmin+1}if(ymax<=ymin){ymax=ymin+1}
+ let yp=(ymax-ymin)*.08;ymin-=yp;ymax+=yp;
+ q.clearRect(0,0,W,H);
+ q.font='11px system-ui';
+ q.strokeStyle='#343a46';q.fillStyle='#a7adb7';
+ for(let i=0;i<=4;i++){
+   let y=T+(H-T-B)*i/4,val=ymax-(ymax-ymin)*i/4;
+   q.beginPath();q.moveTo(L,y);q.lineTo(W-R,y);q.stroke();
+   q.fillText(val.toFixed(Math.abs(val)<20?1:0),4,y+4);
+ }
+ for(let i=0;i<=4;i++){
+   let x=L+(W-L-R)*i/4,val=xmin+(xmax-xmin)*i/4;
+   q.beginPath();q.moveTo(x,T);q.lineTo(x,H-B);q.stroke();
+   q.fillText(val.toFixed(Math.abs(val)<20?1:0),x-10,H-11);
+ }
+ q.fillText(xLab,W/2-15,H-2);
+ q.save();q.translate(11,H/2+15);q.rotate(-Math.PI/2);q.fillText(yLab,0,0);q.restore();
+ const X=x=>L+(W-L-R)*(x-xmin)/(xmax-xmin),Y=y=>H-B-(H-T-B)*(y-ymin)/(ymax-ymin);
+ sets.forEach((pts,i)=>{
+   q.strokeStyle=COLORS[i%COLORS.length];q.lineWidth=2;q.beginPath();
+   pts.forEach(([x,y],j)=>j?q.lineTo(X(x),Y(y)):q.moveTo(X(x),Y(y)));
+   q.stroke();
+ });
+}
+function drawAll(){
+ draw('plotX',d=>d.t,d=>d.x,'t, s','x, m',{zero:true});
+ draw('plotV',d=>d.t,d=>d.v*3.6,'t, s','v, km/h',{zero:true});
+ draw('plotA',d=>d.t,d=>d.a,'t, s','a, m/s²',{zero:true});
+ draw('plotR',d=>d.t,d=>d.rpm,'t, s','rpm',{zero:true});
+ draw('plotVX',d=>d.x,d=>d.v*3.6,'x, m','v, km/h',{zero:true});
+ draw('plotAX',d=>d.x,d=>d.a,'x, m','a, m/s²',{zero:true});
+ draw('plotAV',d=>d.v*3.6,d=>d.a,'v, km/h','a, m/s²',{zero:true});
+ draw('plotDV',d=>d.t,d=>d.v*3.6,'t, s','Δv, km/h',{diff:true,zero:true});
+ draw('plotDX',d=>d.t,d=>d.x,'t, s','Δx, m',{diff:true,zero:true});
+}
+
+function renderLanes(){
+ $('lanes').innerHTML=bikes.map((b,i)=>`<div class="lane"><span class="small" style="overflow:hidden;text-overflow:ellipsis">${esc(b.n)}</span><div class="track"><span class="bikeicon" data-i="${i}">🏍️</span><span class="lanestat" data-i="${i}"></span></div></div>`).join('');
+}
+function setRace(t){
+ $('clock').textContent=t.toFixed(2)+' s';
+ let mt=Math.min(25,Math.max(...sims.map(s=>s.at(-1)?.t||1)));
+ $('scrub').value=Math.max(0,Math.min(2000,t/mt*2000));
+ document.querySelectorAll('.bikeicon').forEach(e=>{let i=+e.dataset.i,d=atT(sims[i],t);if(d)e.style.left=Math.min(95,d.x/400*95)+'%'});
+ document.querySelectorAll('.lanestat').forEach(e=>{let i=+e.dataset.i,d=atT(sims[i],t);if(d)e.textContent=`${d.x.toFixed(0)} m · ${(d.v*3.6).toFixed(0)} km/h · G${d.gear}`});
+}
+function updateRef(){
+ let old=$('reference').value;
+ $('reference').innerHTML=bikes.map((b,i)=>`<option value="${i}">${esc(b.n)}</option>`).join('');
+ if(old!==''&&+old<bikes.length)$('reference').value=old;
+}
+function recalc(){
+ try{
+   readCards();sims=bikes.map(simulate);updateRef();renderLanes();makeTable();drawAll();setRace(0);
+   $('msg').textContent='Simulation updated.';
+ }catch(e){$('msg').textContent=e.message}
+}
+function stopRace(){racing=false;if(raf)cancelAnimationFrame(raf);raf=null;$('race').textContent='Play race'}
+function playRace(){
+ if(racing){stopRace();return}
+ racing=true;$('race').textContent='Pause';
+ let mt=Math.min(25,Math.max(...sims.map(s=>s.at(-1)?.t||0))),start=+$('scrub').value/2000*mt,t0=performance.now()-start*1000;
+ const f=n=>{
+   if(!racing)return;
+   let t=(n-t0)/1000;
+   if(t>=mt){setRace(mt);stopRace();return}
+   setRace(t);raf=requestAnimationFrame(f);
+ };
+ raf=requestAnimationFrame(f);
+}
+
+function stopAudio(){
+ audioNodes.forEach(n=>{try{n.stop?.()}catch{}try{n.disconnect?.()}catch{}});
+ audioNodes=[];
+}
+function pulseBuf(ctx){
+ let dur=.09,N=Math.floor(ctx.sampleRate*dur),b=ctx.createBuffer(1,N,ctx.sampleRate),a=b.getChannelData(0),lp=0;
+ for(let i=0;i<N;i++){
+   let t=i/ctx.sampleRate,n=Math.random()*2-1;
+   lp=.86*lp+.14*n;
+   a[i]=Math.exp(-t*45)*(.76*lp+.18*Math.sin(2*Math.PI*70*t)+.06*Math.sin(2*Math.PI*145*t));
+ }
+ return b;
+}
+function events(s,angles,dur){
+ let ev=[],ang=0,k=0,cy=0,next=angles[0];
+ for(let i=1;i<s.length;i++){
+   let a=s[i-1],b=s[i];if(b.t>dur)break;
+   let old=ang;ang+=((a.rpm+b.rpm)/2)*6*(b.t-a.t);
+   while(next<=ang){
+     if(next>=old){
+       let f=(next-old)/(ang-old||1);
+       ev.push({t:a.t+f*(b.t-a.t),rpm:a.rpm+f*(b.rpm-a.rpm)});
+     }
+     k++;if(k>=angles.length){k=0;cy++}
+     next=angles[k]+cy*720;
+   }
+ }
+ return ev;
+}
+function playSound(b,s){
+ if(!s?.length)return;
+ stopAudio();
+ audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();
+ audioCtx.resume();
+ let ctx=audioCtx,start=ctx.currentTime+.04,dur=Math.min(8,s.at(-1).t),buf=pulseBuf(ctx),
+     master=ctx.createGain(),body=ctx.createBiquadFilter(),low=ctx.createBiquadFilter(),comp=ctx.createDynamicsCompressor();
+ master.gain.value=.28;
+ body.type='peaking';body.frequency.value=170;body.Q.value=.8;body.gain.value=6;
+ low.type='lowpass';low.frequency.value=2600;
+ master.connect(body);body.connect(low);low.connect(comp);comp.connect(ctx.destination);
+ audioNodes.push(master,body,low,comp);
+ events(s,b.fire,dur).forEach(e=>{
+   let src=ctx.createBufferSource(),g=ctx.createGain(),bp=ctx.createBiquadFilter(),tt=start+e.t;
+   src.buffer=buf;src.playbackRate.value=.65+e.rpm/b.red*.55;
+   bp.type='bandpass';bp.frequency.value=140+e.rpm*.08;bp.Q.value=.5;
+   g.gain.setValueAtTime(.0001,tt);
+   g.gain.exponentialRampToValueAtTime(.055,tt+.002);
+   g.gain.exponentialRampToValueAtTime(.0001,tt+.075);
+   src.connect(bp);bp.connect(g);g.connect(master);
+   src.start(tt);src.stop(tt+.09);
+   audioNodes.push(src,bp,g);
+ });
+}
+
+$('addBike').addEventListener('click',()=>{
+ if(bikes.length>=MAX){$('msg').textContent='Maximum 6 bikes.';return}
+ bikes.push(newBike(['xj6','trident','bear','nx500','st900','s400','xsr125'][bikes.length%7]));
+ renderCards();recalc();
+});
+$('calc').addEventListener('click',recalc);
+$('race').addEventListener('click',playRace);
+$('stopSound').addEventListener('click',stopAudio);
+$('reference').addEventListener('change',drawAll);
+$('scrub').addEventListener('input',()=>{
+ stopRace();
+ let mt=Math.min(25,Math.max(...sims.map(s=>s.at(-1)?.t||1)));
+ setRace(+$('scrub').value/2000*mt);
+});
+
+bikes=[newBike('xj6'),newBike('trident'),newBike('bear')];
+renderCards();
+recalc();
+})();
+</script>
+</body>
+</html>
